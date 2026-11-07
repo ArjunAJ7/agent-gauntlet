@@ -83,3 +83,27 @@ class Gateway:
 
 class GatewayError(Exception):
     pass
+
+
+class OutageGateway:
+    """Simulated mid-run provider outage: delegates to a real Gateway for the
+    first `after` model calls, then every call fails with GatewayError, as a
+    provider outage would surface. Synthetic and local; nothing external is
+    touched. Records pass through to the inner gateway for metering.
+    """
+
+    def __init__(self, inner: "Gateway", after: int):
+        self.inner = inner
+        self.after = after
+        self.calls = 0
+
+    @property
+    def records(self):
+        return self.inner.records
+
+    def chat(self, model, messages, max_tokens=1024, temperature=0.0, tools=None):
+        self.calls += 1
+        if self.calls > self.after:
+            raise GatewayError("simulated provider outage: gateway unreachable")
+        return self.inner.chat(model, messages, max_tokens=max_tokens,
+                               temperature=temperature, tools=tools)

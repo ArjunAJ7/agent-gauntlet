@@ -12,7 +12,7 @@ import os
 import time
 
 from .agents import REACT_CONCISE, REACT_SKEPTIC, AgentSpec, run_agent
-from .gateway import Gateway
+from .gateway import Gateway, OutageGateway
 from .tasks import get_suite
 
 # Conservative default: Cloudflare Workers AI free tier is 10,000 neurons/day;
@@ -41,7 +41,8 @@ def run_matrix(suite: str, agents: list[AgentSpec], reps: int, out_path: str):
                     trace: list[dict] = []
                     t0 = time.monotonic()
                     before = len(gateway.records)
-                    answer = run_agent(spec, gateway, task.make_env(rep),
+                    run_gw = OutageGateway(gateway, task.outage_after) if task.outage_after else gateway
+                    answer = run_agent(spec, run_gw, task.make_env(rep),
                                        task.goal, task.max_steps, trace)
                     wall = time.monotonic() - t0
                     calls = gateway.records[before:]

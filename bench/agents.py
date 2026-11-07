@@ -58,8 +58,11 @@ def run_agent(spec: AgentSpec, gateway: Gateway, env, goal: str,
             trace.append({"step": step, "kind": "model_error", "error": str(e)})
             break
         msg = (resp.get("choices") or [{}])[0].get("message") or {}
-        messages.append({k: v for k, v in msg.items() if k in
-                         ("role", "content", "tool_calls")})
+        echo = {k: v for k, v in msg.items() if k in
+                ("role", "content", "tool_calls")}
+        # Workers AI rejects null content on assistant tool-call turns.
+        echo["content"] = echo.get("content") or ""
+        messages.append(echo)
         calls = msg.get("tool_calls") or []
         trace.append({"step": step, "kind": "model",
                       "content": (msg.get("content") or "")[:400],

@@ -41,7 +41,7 @@ def run_matrix(suite: str, agents: list[AgentSpec], reps: int, out_path: str):
                     trace: list[dict] = []
                     t0 = time.monotonic()
                     before = len(gateway.records)
-                    answer = run_agent(spec, gateway, task.make_env(),
+                    answer = run_agent(spec, gateway, task.make_env(rep),
                                        task.goal, task.max_steps, trace)
                     wall = time.monotonic() - t0
                     calls = gateway.records[before:]

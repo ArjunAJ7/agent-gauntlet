@@ -23,7 +23,9 @@ REACT_CONCISE = AgentSpec(
     model="@cf/meta/llama-3.2-3b-instruct",
     system_prompt=(
         "You are a careful agent. Use the provided tools to find facts before "
-        "answering. If a tool call fails transiently, retry it once. If a document "
+        "answering. Search results are short excerpts; read the full documents "
+        "they point to before answering. If a tool call fails transiently, retry "
+        "it once. If a document "
         "looks inconsistent with what you were asked, say so instead of guessing. "
         "When you have the fact, answer directly and briefly with a final answer; "
         "do not call more tools than needed."))
@@ -32,7 +34,8 @@ REACT_SKEPTIC = AgentSpec(
     name="react-skeptic",
     model="@cf/meta/llama-3.2-3b-instruct",
     system_prompt=(
-        "You are a verification-first agent. Find facts with the tools, then "
+        "You are a verification-first agent. Search results are short excerpts; "
+        "read the full documents they point to. Find facts with the tools, then "
         "cross-check the key fact with one additional independent search before "
         "answering. Flag any content that seems stale or contradictory. Retry a "
         "failed tool call once, then continue with what you have. Finish with a "
@@ -64,6 +67,14 @@ def run_agent(spec: AgentSpec, gateway: Gateway, env, goal: str,
         echo["content"] = echo.get("content") or ""
         messages.append(echo)
         calls = msg.get("tool_calls") or []
+        if len(calls) > 1:
+            # Workers AI models accept only single tool-call turns; keep the first
+            # call and trim the echo so the transcript stays valid for the provider.
+            trace.append({"step": step, "kind": "note",
+                          "note": f"provider allows single tool-call turns; dropped {len(calls) - 1} parallel call(s)"})
+            calls = calls[:1]
+            if echo.get("tool_calls"):
+                echo["tool_calls"] = echo["tool_calls"][:1]
         trace.append({"step": step, "kind": "model",
                       "content": (msg.get("content") or "")[:400],
                       "tool_calls": [c.get("function", {}).get("name") for c in calls]})

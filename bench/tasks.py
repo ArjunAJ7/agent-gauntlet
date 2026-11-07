@@ -14,12 +14,12 @@ class Task:
     task_id: str
     suite: str
     goal: str                       # what the agent is asked to do
-    make_env: Callable[[], object]  # fresh synthetic env per run
+    make_env: Callable[[int], object]  # fresh synthetic env per run, takes rep index
     grade: Callable[[str], bool]    # deterministic check on the final answer
     max_steps: int = 12
 
 
-def _docs_single_hop() -> DocsStore:
+def _docs_single_hop(rep: int = 0) -> DocsStore:
     return DocsStore(docs={
         "refund-policy": "Refunds: requests within 30 days are approved automatically. "
                          "After 30 days a manager review is required.",
@@ -28,12 +28,13 @@ def _docs_single_hop() -> DocsStore:
     })
 
 
-def _docs_multi_hop() -> DocsStore:
+def _docs_multi_hop(rep: int = 0) -> DocsStore:
     return DocsStore(docs={
         "release-notes-4.2": "Release 4.2 moved cron scheduling from the worker "
                              "service to the scheduler service. See scheduler-config.",
         "scheduler-config": "The scheduler service reads its timezone from "
-                            "SCHEDULER_TZ, defaulting to UTC.",
+                            "SCHEDULER_TZ. When SCHEDULER_TZ is unset, cron jobs "
+                            "run in UTC.",
         "worker-config": "The worker service reads WORKER_CONCURRENCY, default 4.",
         "changelog-old": "Release 4.1 added the worker service.",
     })
@@ -64,16 +65,17 @@ def with_injection(task: Task, mode: str, **kw) -> Task:
     from .envs.inject import FlakyWrapper, MisleadingWrapper
     if mode == "flaky":
         return Task(task.task_id + ".flaky", "resilience", task.goal,
-                    lambda: FlakyWrapper(task.make_env(), **kw), task.grade,
+                    lambda rep=0: FlakyWrapper(task.make_env(rep), **{**kw, "seed": kw.get("seed", 0) + rep}), task.grade,
                     task.max_steps + 6)
     if mode == "misleading":
         stale = {  # known-wrong but plausible content per task
             "docs.multi_hop.cron_tz": "The scheduler service reads its timezone from "
-                                      "CRON_TZ, defaulting to Asia/Kolkata.",
+                                      "CRON_TZ. When CRON_TZ is unset, cron jobs run "
+                                      "in Asia/Kolkata.",
         }
         doc = {"docs.multi_hop.cron_tz": "scheduler-config"}[task.task_id]
         return Task(task.task_id + ".misleading", "resilience", task.goal,
-                    lambda: MisleadingWrapper(task.make_env(), doc, stale[task.task_id]),
+                    lambda rep=0: MisleadingWrapper(task.make_env(rep), doc, stale[task.task_id]),
                     task.grade, task.max_steps)
     raise ValueError(mode)
 

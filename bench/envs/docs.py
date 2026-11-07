@@ -13,7 +13,8 @@ class DocsStore:
     docs: dict[str, str] = field(default_factory=dict)
 
     def search(self, query: str) -> list[dict]:
-        """Keyword overlap search, like a naive BM25 stand-in."""
+        """Keyword overlap search, like a naive BM25 stand-in. Snippets are
+    excerpts (60 chars), so a full answer usually needs docs_read."""
         q = {w.lower() for w in query.split() if len(w) > 2}
         hits = []
         for doc_id, text in self.docs.items():
@@ -21,7 +22,7 @@ class DocsStore:
             score = len(q & words)
             if score:
                 hits.append({"doc_id": doc_id, "score": score,
-                             "snippet": text[:120]})
+                             "snippet": text[:60]})
         return sorted(hits, key=lambda h: -h["score"])[:5]
 
     def read(self, doc_id: str) -> str:

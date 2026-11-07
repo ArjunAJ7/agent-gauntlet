@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .envs.docs import DocsStore
+from .envs.tickets import TicketTracker
 
 
 @dataclass
@@ -56,7 +57,31 @@ def _docs_multi_hop(rep: int = 0) -> DocsStore:
     })
 
 
+def _tickets_priority(rep: int = 0) -> TicketTracker:
+    return TicketTracker(tickets=[
+        {"id": "T-101", "title": "Checkout fails on Safari", "status": "open",
+         "assignee": "meera", "priority": "high",
+         "notes": "Reproduced on Safari 18. Blocks payments."},
+        {"id": "T-102", "title": "CSV export garbled", "status": "open",
+         "assignee": "tomas", "priority": "medium",
+         "notes": "Encoding issue for non-ASCII names."},
+        {"id": "T-103", "title": "Login page typo", "status": "closed",
+         "assignee": "meera", "priority": "low", "notes": "Fixed in 4.2."},
+        {"id": "T-104", "title": "API latency spike", "status": "open",
+         "assignee": "meera", "priority": "critical",
+         "notes": "p99 at 4s since the 4.2 deploy. Customers calling in."},
+    ])
+
+
 TASKS: list[Task] = [
+    Task(
+        task_id="tickets.priority.open_critical",
+        suite="core",
+        goal="Which OPEN ticket has the highest priority, and who is it assigned to? "
+             "Answer with the ticket id and the assignee.",
+        make_env=_tickets_priority,
+        grade=lambda ans: bool(re.search(r"\bT-104\b", ans)) and bool(re.search(r"\bmeera\b", ans, re.I)),
+    ),
     Task(
         task_id="docs.single_hop.refund_window",
         suite="core",
@@ -112,7 +137,8 @@ def with_injection(task: Task, mode: str, **kw) -> Task:
 def get_suite(name: str) -> list[Task]:
     out = [t for t in TASKS if t.suite == name]
     if name == "core":  # core suite also runs resilience variants of its tasks
-        out += [with_injection(TASKS[2], "flaky", fail_rate=0.3, seed=7),
-                with_injection(TASKS[2], "misleading"),
-                with_injection(TASKS[1], "outage", after=2)]
+        by_id = {t.task_id: t for t in TASKS}
+        out += [with_injection(by_id["docs.multi_hop.cron_tz"], "flaky", fail_rate=0.3, seed=7),
+                with_injection(by_id["docs.multi_hop.cron_tz"], "misleading"),
+                with_injection(by_id["docs.three_hop.lag_threshold"], "outage", after=2)]
     return out

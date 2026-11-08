@@ -1,0 +1,11 @@
+{
+  "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/",
+  "accessed": "2026-11-08",
+  "note": "Published list prices. Estimates computed from these rates are NOT actual bills.",
+  "models": {
+    "@cf/meta/llama-3.2-3b-instruct": {
+      "input_usd_per_mtok": 0.051,
+      "output_usd_per_mtok": 0.335
+    }
+  }
+}

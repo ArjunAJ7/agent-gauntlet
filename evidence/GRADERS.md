@@ -15,3 +15,11 @@ kept byte-identical to its v1 recording.
 
 `evidence/matrix8-20261108.jsonl` (112 runs) was executed under v2; its recorded
 outcomes are v2 outcomes. This is the current reference matrix.
+
+## Report column added (2026-11-08, traces unchanged)
+
+`evidence/reference-report-8reps-20261108.html` was regenerated from the unchanged
+`matrix8-20261108.jsonl` with a new "Est. cost (USD)" column: published list prices
+(bench/pricing.json, Cloudflare pricing page accessed 2026-11-08) x recorded token
+usage. Estimate, not an actual bill; reference runs paid $0 (free tier). Unknown
+models or missing usage render "unavailable", never zero. No outcomes changed.

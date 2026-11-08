@@ -11,6 +11,8 @@ import html
 import json
 from collections import defaultdict
 
+from .pricing import estimate_run, load_pricing, total as cost_total
+
 
 def load(path: str) -> list[dict]:
     with open(path) as f:
@@ -21,6 +23,7 @@ def aggregate(recs: list[dict]) -> dict:
     agg = defaultdict(list)
     for r in recs:
         agg[(r["agent"], r["task_id"])].append(r)
+    pricing = load_pricing()
     rows = []
     for (agent, task), rs in sorted(agg.items()):
         n = len(rs)
@@ -32,6 +35,7 @@ def aggregate(recs: list[dict]) -> dict:
             "avg_tokens": sum(r["usage"]["total_tokens"] for r in rs) / n,
             "avg_wall_s": sum(r["wall_s"] for r in rs) / n,
             "tool_errors": sum(r["tool_errors"] for r in rs),
+            "est_cost": cost_total(rs, pricing),
         })
     return rows
 
@@ -56,6 +60,14 @@ def render(rows: list[dict], recs: list[dict]) -> str:
             f"<details><summary>#{i} {html.escape(r['task_id'])} x "
             f"{html.escape(r['agent'])} rep{r['rep']} - {verdict}</summary>"
             f"<p><b>Answer:</b> {html.escape(r['answer'])}</p><ol>{steps}</ol></details>")
+    grand = cost_total(recs)
+    grand_txt = f"${grand[0]:.4f} across {grand[1]} runs" if grand else "unavailable (some runs unpriced)"
+    pricing = load_pricing()
+    cost_note = (f"Estimated cost is computed from published list prices "
+                 f"({html.escape(pricing['source'])}, accessed {html.escape(pricing['accessed'])}) "
+                 f"applied to recorded token usage. It is an estimate, NOT an actual bill; "
+                 f"reference runs paid $0 on the free tier. Rows with unknown models or missing "
+                 f"usage show unavailable, never zero. Grand total: {grand_txt}.")
     return f"""<!doctype html><meta charset=utf-8><title>Agent Gauntlet report</title>
 <style>body{{font-family:system-ui;max-width:1100px;margin:2rem auto;padding:0 1rem}}
 table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccc;padding:.4rem}}
@@ -63,8 +75,9 @@ details{{margin:.6rem 0}}summary{{cursor:pointer}}</style>
 <h1>Agent Gauntlet - benchmark report</h1>
 <p>{len(recs)} runs. Deterministic grading; resilience rows are synthetic failure-injection variants.</p>
 <table><tr><th>Agent</th><th>Task</th><th>Runs</th><th>Success</th><th>Steps</th>
-<th>Tool calls</th><th>Tokens</th><th>Wall</th><th>Tool errors</th></tr>
+<th>Tool calls</th><th>Tokens</th><th>Wall</th><th>Tool errors</th><th>Est. cost (USD)</th></tr>
 {''.join(trs)}</table>
+<p><small>{cost_note}</small></p>
 <h2>Run traces</h2>{''.join(blocks)}"""
 
 

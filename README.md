@@ -92,6 +92,10 @@ Scope and honesty notes:
   Both agents retry; the gap is consistent with stricter retry behavior helping, but
   n=8 is directional evidence, not proof, and both prompts come from one model
   (Workers AI Llama) on one day.
+- Estimated cost: the report includes an "Est. cost (USD)" column computed from
+  Cloudflare's published list prices (bench/pricing.json, accessed 2026-11-08) x
+  recorded token usage. Reproducible estimate, not an actual bill - reference
+  runs paid $0 on the free tier. Unknown models/missing usage show "unavailable".
 - Token usage: skeptic used about 46% more tokens than concise (135,168 vs 92,535
   across the full 112-run matrix). Clean runs alone are not identical outcomes
   (three-hop 7/8 vs 8/8), so no clean-only cost-per-success claim is made.

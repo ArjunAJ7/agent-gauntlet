@@ -75,7 +75,7 @@ Bifrost, 2026-11-08. Agents: `react-concise` (minimal prompt) and `react-skeptic
 | docs.three_hop.lag_threshold | 3/4 | 4/4 | concise answers from excerpts without reading; skeptic reads the chain |
 | docs.multi_hop.cron_tz.flaky | 2/4 | 3/4 | transient tool errors; retries recover most but not all |
 | docs.multi_hop.cron_tz.misleading | 0/4 | 0/4 | a stale-but-plausible document fools both agents every time |
-| docs.three_hop.lag_threshold.outage | 0/4 | 0/4 | provider dies mid-run; trace shows exactly where each run stood |
+| docs.three_hop.lag_threshold.outage | 0/4 | 0/4 | simulated gateway termination mid-run; trace shows exactly where each run stood |
 
 Token cost: skeptic used ~45% more tokens than concise for the same clean-task
 outcomes. Findings that only an agent-level benchmark surfaces: small agents trust

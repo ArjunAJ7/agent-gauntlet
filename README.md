@@ -10,7 +10,7 @@ plausible-but-wrong output. Agent Gauntlet measures *that*.
 Built for the Geek Room Global AI Hackathon (Bifrost track), on top of the open-source
 [Bifrost](https://github.com/maximhq/bifrost) gateway: every model call in a run goes
 through one local gateway, which gives the platform uniform per-call metering
-(tokens, latency, token-metered cost) across any provider Bifrost supports.
+(tokens, latency) across any provider Bifrost supports.
 
 ## What it measures
 
@@ -18,7 +18,7 @@ Per agent x task x repetition:
 
 - **Success rate** - deterministic graders, no LLM judging
 - **Steps and tool calls** to completion (and where runs loop or stall)
-- **Tokens, latency and token-metered cost** per run and per successful outcome, via Bifrost metering
+- **Token usage (cost proxy) and latency** per run and per successful outcome, via Bifrost metering. Monetary cost across providers is not implemented or measured; $0 paid in reference runs.
 - **Wall-clock latency**
 - **Resilience** under synthetic failure injection: flaky tools, mid-run provider
   outage, and misleading tool output. Injection runs only inside the platform's own

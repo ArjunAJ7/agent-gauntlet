@@ -92,8 +92,9 @@ Scope and honesty notes:
   Both agents retry; the gap is consistent with stricter retry behavior helping, but
   n=8 is directional evidence, not proof, and both prompts come from one model
   (Workers AI Llama) on one day.
-- Token cost: skeptic used ~46% more tokens than concise (135,168 vs 92,535 across
-  the 112 runs) for the same clean-task outcomes.
+- Token cost: skeptic used about 46% more tokens than concise (135,168 vs 92,535
+  across the full 112-run matrix). Clean runs alone are not identical outcomes
+  (three-hop 7/8 vs 8/8), so no clean-only cost-per-success claim is made.
 - Graders are keyword/pattern matchers with contradiction checks (grader v2,
   2026-11-08). v2 rejects answers that name a wrong alternative alongside the right
   fact; re-scoring the archived 56-run v1 matrix with v2 flips 0 of 56 outcomes.

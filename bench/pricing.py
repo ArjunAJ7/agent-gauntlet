@@ -64,7 +64,30 @@ def _selftest() -> None:
     assert t is not None and abs(t[0] - 0.772) < 1e-9 and t[1] == 2, t
     assert total(runs + [{"model": "unknown-model",
                           "usage": {"prompt_tokens": 1, "completion_tokens": 1}}], p) is None
-    print("pricing self-tests: 7/7 pass")
+    # report alignment: header count == cell count on every row; values and
+    # unavailable both visible in the emitted HTML
+    import re
+    from . import report as _report
+    sample = [
+        {"agent": "a", "task_id": "t1", "rep": 0, "success": True, "answer": "x",
+         "trace": [], "steps": 1, "tool_calls": 1, "tool_errors": 0, "wall_s": 1.0,
+         "model": "@cf/meta/llama-3.2-3b-instruct",
+         "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000,
+                   "total_tokens": 2_000_000}},
+        {"agent": "a", "task_id": "t2", "rep": 0, "success": False, "answer": "x",
+         "trace": [], "steps": 1, "tool_calls": 0, "tool_errors": 0, "wall_s": 1.0,
+         "model": "unknown-model",
+         "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10}},
+    ]
+    doc = _report.render(_report.aggregate(sample), sample)
+    n_headers = doc.count("<th>")
+    body_rows = re.findall(r"<tr>(.*?)</tr>", doc, re.S)[1:]
+    assert body_rows, "no body rows rendered"
+    for row_html in body_rows:
+        assert row_html.count("<td>") == n_headers, (n_headers, row_html.count("<td>"))
+    assert "$0.3860" in doc, "known 2M-token estimate missing from HTML"
+    assert "unavailable" in doc, "unknown-model row must show unavailable"
+    print("pricing self-tests: 11/11 pass")
 
 
 if __name__ == "__main__":

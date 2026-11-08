@@ -48,7 +48,8 @@ def render(rows: list[dict], recs: list[dict]) -> str:
             f"<td>{row['n']}</td><td>{row['success_rate']:.0%}</td>"
             f"<td>{row['avg_steps']:.1f}</td><td>{row['avg_tools']:.1f}</td>"
             f"<td>{row['avg_tokens']:.0f}</td><td>{row['avg_wall_s']:.1f}s</td>"
-            f"<td>{row['tool_errors']}</td></tr>")
+            f"<td>{row['tool_errors']}</td>"
+            f"<td>{('$' + format(row['est_cost'][0], '.4f')) if row['est_cost'] else 'unavailable'}</td></tr>")
     blocks = []
     for i, r in enumerate(recs):
         steps = "".join(

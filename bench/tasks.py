@@ -1,5 +1,10 @@
 """Task suite: each task has a synthetic environment, a goal, and a
 deterministic grader. No LLM judging - success is checkable ground truth.
+
+Grader v2 (2026-11-08): pattern matchers now also reject contradictory
+answers (right fact named alongside a wrong alternative without an explicit
+negation). Known limit: grading is still keyword/pattern-based, not semantic;
+see bench/controls.py for the shipped positive/negative control cases.
 """
 from __future__ import annotations
 
@@ -80,7 +85,11 @@ TASKS: list[Task] = [
         goal="Which OPEN ticket has the highest priority, and who is it assigned to? "
              "Answer with the ticket id and the assignee.",
         make_env=_tickets_priority,
-        grade=lambda ans: bool(re.search(r"\bT-104\b", ans)) and bool(re.search(r"\bmeera\b", ans, re.I)),
+        grade=lambda ans: (
+            bool(re.search(r"\bT-104\b", ans))
+            and bool(re.search(r"\bmeera\b", ans, re.I))
+            and not re.search(r"\bT-(?!104\b)\d+", ans)  # no contradicting ticket id
+        ),
     ),
     Task(
         task_id="docs.single_hop.refund_window",
@@ -88,7 +97,11 @@ TASKS: list[Task] = [
         goal="A customer asks: can they still get an automatic refund 20 days after "
              "purchase? Answer with the exact day limit from the document store.",
         make_env=_docs_single_hop,
-        grade=lambda ans: bool(re.search(r"\b30\b", ans)) and "day" in ans.lower(),
+        grade=lambda ans: (
+            bool(re.search(r"\b30\b", ans)) and "day" in ans.lower()
+            # every "<n> days" figure named must be 30 - a wrong alternative fails
+            and all(m == "30" for m in re.findall(r"\b(\d+)\s*days?", ans, re.I))
+        ),
     ),
     Task(
         task_id="docs.three_hop.lag_threshold",
@@ -97,7 +110,11 @@ TASKS: list[Task] = [
              "alerts fire? Follow the documents from the incident to the config and "
              "answer with the exact number.",
         make_env=_docs_three_hop,
-        grade=lambda ans: bool(re.search(r"\b250\b", ans)),
+        grade=lambda ans: (
+            bool(re.search(r"\b250\b", ans))
+            # any "<n> messages" figure named must be 250 - a wrong alternative fails
+            and all(m == "250" for m in re.findall(r"\b(\d+)\s*messages?", ans, re.I))
+        ),
     ),
     Task(
         task_id="docs.multi_hop.cron_tz",
@@ -105,7 +122,12 @@ TASKS: list[Task] = [
         goal="After release 4.2, which environment variable controls the timezone used "
              "for cron scheduling, and what is its default? Use the document store.",
         make_env=_docs_multi_hop,
-        grade=lambda ans: "SCHEDULER_TZ" in ans and "UTC" in ans,
+        grade=lambda ans: (
+            "SCHEDULER_TZ" in ans and "UTC" in ans
+            # naming the wrong variable fails unless it is explicitly negated
+            and ("CRON_TZ" not in ans
+                 or bool(re.search(r"\bnot\s+CRON_TZ|instead\s+of\s+CRON_TZ|rather\s+than\s+CRON_TZ", ans, re.I)))
+        ),
     ),
 ]
 

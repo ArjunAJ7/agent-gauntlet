@@ -18,7 +18,7 @@ Per agent x task x repetition:
 
 - **Success rate** - deterministic graders, no LLM judging
 - **Steps and tool calls** to completion (and where runs loop or stall)
-- **Token usage (cost proxy) and latency** per run and per successful outcome, via Bifrost metering. Monetary cost across providers is not implemented or measured; $0 paid in reference runs.
+- **Token usage and latency** per run and per successful outcome, via Bifrost metering. Estimated cost is available for the reference model from dated published list prices (bench/pricing.json); unknown models show "unavailable". Actual billed and cross-provider cost are not measured; reference runs paid $0.
 - **Wall-clock latency**
 - **Resilience** under synthetic failure injection: flaky tools, mid-run provider
   outage, and misleading tool output. Injection runs only inside the platform's own

@@ -15,15 +15,21 @@ from .agents import REACT_CONCISE, REACT_SKEPTIC, AgentSpec, run_agent
 from .gateway import Gateway, OutageGateway
 from .tasks import get_suite
 
-# Conservative default: Cloudflare Workers AI free tier is 10,000 neurons/day;
-# a small-model call here costs ~0.1-0.5 neurons. The cap is a hard stop.
+# Conservative default: Cloudflare Workers AI free tier is 10,000 neurons/day.
+# The cap is a hard stop so a benchmark run can never approach the quota.
 DAILY_NEURON_CAP = float(os.environ.get("BENCH_DAILY_NEURON_CAP", "2000"))
+
+# Quota guardrail estimate only - NOT a cost estimate. Cloudflare-published
+# rates for @cf/meta/llama-3.2-3b-instruct
+# (https://developers.cloudflare.com/workers-ai/platform/pricing/, read
+# 2026-11-08): 4,625 neurons per 1M input tokens, 30,475 per 1M output tokens.
+# Every token is counted at the HIGHER output rate, so the guardrail
+# deliberately over-counts real quota consumption.
+NEURONS_PER_TOKEN_CONSERVATIVE = 0.0305
 
 
 def estimate_neurons(record: dict) -> float:
-    # llama-3.2-3b: ~0.06 neurons per 10 tokens (published pricing basis;
-    # refined against real account usage before scaled runs)
-    return record["usage"]["total_tokens"] * 0.006
+    return record["usage"]["total_tokens"] * NEURONS_PER_TOKEN_CONSERVATIVE
 
 
 def run_matrix(suite: str, agents: list[AgentSpec], reps: int, out_path: str):

@@ -41,8 +41,13 @@ class Gateway:
 
         Raises GatewayError on transport/API failure so the runner can record
         the call as failed (a failed call is benchmark data, not a crash).
+
+        BENCH_WIRE_MODEL_PREFIX optionally prefixes the model on the wire only
+        (Bifrost provider routing, e.g. "cf-workers-ai/"); benchmark records
+        keep the canonical model name.
         """
-        body = {"model": model, "messages": messages,
+        wire_model = os.environ.get("BENCH_WIRE_MODEL_PREFIX", "") + model
+        body = {"model": wire_model, "messages": messages,
                 "max_tokens": max_tokens, "temperature": temperature}
         if tools:
             body["tools"] = tools

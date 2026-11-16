@@ -19,6 +19,32 @@ from .tasks import get_suite
 # The cap is a hard stop so a benchmark run can never approach the quota.
 DAILY_NEURON_CAP = float(os.environ.get("BENCH_DAILY_NEURON_CAP", "2000"))
 
+# The cap is DAILY, so it must survive chunked invocations (runner --skip/--limit).
+# A small JSON state file keyed by UTC date carries the cumulative estimate;
+# BENCH_CAP_STATE overrides the path. Missing/corrupt state fails closed: the
+# cap counts this invocation only, never above DAILY_NEURON_CAP extra.
+CAP_STATE_PATH = os.environ.get(
+    "BENCH_CAP_STATE", os.path.expanduser("~/.bench_cap_state.json"))
+
+
+def _load_spent_today() -> float:
+    try:
+        with open(CAP_STATE_PATH) as f:
+            state = json.load(f)
+        if state.get("date") == time.strftime("%Y-%m-%d", time.gmtime()):
+            return float(state.get("spent", 0.0))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _save_spent_today(spent: float) -> None:
+    tmp = CAP_STATE_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"date": time.strftime("%Y-%m-%d", time.gmtime()),
+                   "spent": spent}, f)
+    os.replace(tmp, CAP_STATE_PATH)
+
 # Quota guardrail estimate only - NOT a cost estimate. Cloudflare-published
 # rates for @cf/meta/llama-3.2-3b-instruct
 # (https://developers.cloudflare.com/workers-ai/platform/pricing/, read
@@ -32,47 +58,51 @@ def estimate_neurons(record: dict) -> float:
     return record["usage"]["total_tokens"] * NEURONS_PER_TOKEN_CONSERVATIVE
 
 
-def run_matrix(suite: str, agents: list[AgentSpec], reps: int, out_path: str):
+def run_matrix(suite: str, agents: list[AgentSpec], reps: int, out_path: str,
+               skip: int = 0, limit: int | None = None):
     tasks = get_suite(suite)
     gateway = Gateway()
-    spent = 0.0
+    spent = _load_spent_today()
+    if spent:
+        print(f"daily budget already spent: {spent:.1f} neurons (cap {DAILY_NEURON_CAP:.0f})")
     n_done = 0
+    combos = [(t, a, r) for t in tasks for a in agents for r in range(reps)]
+    combos = combos[skip: skip + limit if limit is not None else None]
     with open(out_path, "a") as out:
-        for task in tasks:
-            for spec in agents:
-                for rep in range(reps):
-                    if spent >= DAILY_NEURON_CAP:
-                        print(f"BUDGET CAP reached ({spent:.1f} neurons); stopping.")
-                        return n_done
-                    trace: list[dict] = []
-                    t0 = time.monotonic()
-                    before = len(gateway.records)
-                    run_gw = OutageGateway(gateway, task.outage_after) if task.outage_after else gateway
-                    answer = run_agent(spec, run_gw, task.make_env(rep),
-                                       task.goal, task.max_steps, trace)
-                    wall = time.monotonic() - t0
-                    calls = gateway.records[before:]
-                    usage = {"prompt_tokens": sum(c.prompt_tokens for c in calls),
-                             "completion_tokens": sum(c.completion_tokens for c in calls)}
-                    usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
-                    ok = task.grade(answer)
-                    rec = {"task_id": task.task_id, "agent": spec.name,
-                           "model": spec.model, "rep": rep, "success": ok,
-                           "answer": answer[:500], "usage": usage,
-                           "wall_s": round(wall, 2),
-                           "steps": len([t for t in trace if t["kind"] == "model"]),
-                           "tool_calls": len([t for t in trace if t["kind"] == "tool"]),
-                           "tool_errors": len([t for t in trace if t.get("outcome") == "error"]),
-                           "model_errors": len([t for t in trace if t["kind"] == "model_error"]),
-                           "trace": trace}
-                    spent += estimate_neurons(rec)
-                    out.write(json.dumps(rec) + "\n")
-                    out.flush()
-                    n_done += 1
-                    print(f"{task.task_id} x {spec.name} rep{rep}: "
-                          f"{'PASS' if ok else 'FAIL'} "
-                          f"({rec['steps']} steps, {rec['tool_calls']} tools, "
-                          f"{usage['total_tokens']} tok, {wall:.1f}s)")
+        for task, spec, rep in combos:
+            if spent >= DAILY_NEURON_CAP:
+                print(f"BUDGET CAP reached ({spent:.1f} neurons); stopping.")
+                return n_done
+            trace: list[dict] = []
+            t0 = time.monotonic()
+            before = len(gateway.records)
+            run_gw = OutageGateway(gateway, task.outage_after) if task.outage_after else gateway
+            answer = run_agent(spec, run_gw, task.make_env(rep),
+                               task.goal, task.max_steps, trace)
+            wall = time.monotonic() - t0
+            calls = gateway.records[before:]
+            usage = {"prompt_tokens": sum(c.prompt_tokens for c in calls),
+                     "completion_tokens": sum(c.completion_tokens for c in calls)}
+            usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
+            ok = task.grade(answer)
+            rec = {"task_id": task.task_id, "agent": spec.name,
+                   "model": spec.model, "rep": rep, "success": ok,
+                   "answer": answer[:500], "usage": usage,
+                   "wall_s": round(wall, 2),
+                   "steps": len([t for t in trace if t["kind"] == "model"]),
+                   "tool_calls": len([t for t in trace if t["kind"] == "tool"]),
+                   "tool_errors": len([t for t in trace if t.get("outcome") == "error"]),
+                   "model_errors": len([t for t in trace if t["kind"] == "model_error"]),
+                   "trace": trace}
+            spent += estimate_neurons(rec)
+            _save_spent_today(spent)
+            out.write(json.dumps(rec) + "\n")
+            out.flush()
+            n_done += 1
+            print(f"{task.task_id} x {spec.name} rep{rep}: "
+                  f"{'PASS' if ok else 'FAIL'} "
+                  f"({rec['steps']} steps, {rec['tool_calls']} tools, "
+                  f"{usage['total_tokens']} tok, {wall:.1f}s)")
     return n_done
 
 
@@ -81,8 +111,13 @@ def main():
     ap.add_argument("--suite", default="core")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--skip", type=int, default=0,
+                    help="skip first N task x agent x rep combos (chunked runs)")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="run at most N combos this invocation (chunked runs)")
     args = ap.parse_args()
-    n = run_matrix(args.suite, [REACT_CONCISE, REACT_SKEPTIC], args.reps, args.out)
+    n = run_matrix(args.suite, [REACT_CONCISE, REACT_SKEPTIC], args.reps, args.out,
+                   skip=args.skip, limit=args.limit)
     print(f"completed {n} runs -> {args.out}")
 
 

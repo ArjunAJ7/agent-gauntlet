@@ -70,6 +70,23 @@
 - Controls extended to 41: five RateLimitGateway unit controls (first call
   denied, in-window retry denied, post-window pass, metering pass-through).
 
+## Local Bifrost recipe (rediscovered Nov 17; survives this note, not the sandbox)
+- `npx -y @maximhq/bifrost -app-dir ~/bifrost-app -port 18777 -host 127.0.0.1`
+  (v1.6.3; the binary dies when the launching shell exits, so start it in the
+  same shell invocation that runs the benchmark).
+- ~/bifrost-app/config.json (source_of_truth: config.json): native
+  `cloudflare` provider (custom providers may NOT use cloudflare as a base
+  type; and the openai base fails key selection because Cloudflare has no
+  GET /models, which list_models_failed gates on). Key: value
+  env.CF_WORKERS_AI_KEY, models ["*"], cloudflare_key_config.account_id set.
+- Governance is mandatory: create a virtual key via
+  POST /api/governance/virtual-keys with header X-Bifrost-Setup-Token
+  (BIFROST_SETUP_TOKEN env at startup). The VK must have
+  allow_all_providers=true and NO provider_configs - a provider_config with
+  no key grant restricts the key pool to zero ("no keys found for provider").
+- Runner env: BIFROST_URL=http://127.0.0.1:18777, BIFROST_VK=<vk>,
+  BENCH_WIRE_MODEL_PREFIX="cloudflare/".
+
 ## Validation (Nov 17, real-model smoke, 6 runs)
 - Local Bifrost config was wiped overnight; instead of rebuilding it, the
   gateway gained BENCH_AUTH_HEADER (direct-provider mode) and the smoke ran
@@ -88,3 +105,9 @@
   validation covers outage parity for all three designs.
 - Smoke spend: ~3.7k tokens (~120 neurons conservative) against the 10k/day
   free allocation; cap state file recorded the spend as usual.
+- Gateway-mediated repeat (same 6 runs, rebuilt local Bifrost per the recipe
+  above, evidence/smoke-ratelimit-outage-mediated-20261117.jsonl): identical
+  outcomes - ratelimit concise FAIL / skeptic FAIL / backoff PASS (868
+  tokens, 2.7s wall through the gateway); outage as before. The Bifrost
+  stack remains the default and documented path; BENCH_AUTH_HEADER direct
+  mode is a labeled fallback for when the local gateway is unavailable.

@@ -63,6 +63,24 @@ To re-run the benchmark yourself:
    pass rates, token/step/latency distributions, and a trace viewer showing every
    model turn and tool call, including injected faults.
 
+## Current development (Nov 16-17)
+
+- 2026-11-16: fresh 56-run matrix (7 tasks x 2 agents x 4 reps) reproduced the
+  reference findings on a new date; report in
+  `evidence/reference-report-4reps-20261116.html`. Daily neuron cap now
+  persists across chunked runner invocations (fail-closed state file).
+- 2026-11-17: third agent design `react-backoff` (honors model-gateway
+  "retry after Ns" windows with a real wait) and a `ratelimit` fault variant
+  (first model call 429s; calls inside the window keep failing). Offline
+  validation with a scripted model gateway: concise gives up on the first
+  429 (FAIL), skeptic retries once inside the window (FAIL), backoff waits
+  out the window and completes (PASS); outage-variant outcomes unchanged for
+  all three. A real-model validation run of the new variant is pending and
+  will be added to `evidence/` when executed.
+- Model-call retry policy is now part of the agent spec
+  (`model_retries`, `honor_retry_after`), so resilience to provider faults is
+  a first-class benchmarked design dimension, not prompt wording.
+
 ## Reference results (validated)
 
 112-run matrix: 4 base tasks + 3 fault-injection variants, x 2 agents x 8 reps,

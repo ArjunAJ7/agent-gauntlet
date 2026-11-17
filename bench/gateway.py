@@ -112,3 +112,36 @@ class OutageGateway:
             raise GatewayError("simulated provider outage: gateway unreachable")
         return self.inner.chat(model, messages, max_tokens=max_tokens,
                                temperature=temperature, tools=tools)
+
+
+class RateLimitGateway:
+    """Gateway wrapper: the first model call fails with an HTTP-429-style
+    error carrying a retry-after window; any call that arrives before the
+    window has elapsed fails again. Only a caller that actually backs off
+    gets through - prompt-level "retry once" does not.
+
+    Deterministic, synthetic and local; nothing external is touched. Records
+    pass through to the inner gateway for metering; a denied call records
+    nothing, because no tokens were spent (as with a real provider 429).
+    """
+
+    def __init__(self, inner: "Gateway", retry_after_s: float = 2.0):
+        self.inner = inner
+        self.retry_after_s = retry_after_s
+        self.last_429_at: float | None = None
+        self.denials = 0
+
+    @property
+    def records(self):
+        return self.inner.records
+
+    def chat(self, model, messages, max_tokens=1024, temperature=0.0, tools=None):
+        now = time.monotonic()
+        if self.last_429_at is None or (now - self.last_429_at) < self.retry_after_s:
+            if self.last_429_at is None:
+                self.last_429_at = now
+            self.denials += 1
+            raise GatewayError(
+                f"http 429: rate limit exceeded, retry after {self.retry_after_s:g}s")
+        return self.inner.chat(model, messages, max_tokens=max_tokens,
+                               temperature=temperature, tools=tools)

@@ -76,6 +76,53 @@ CONTROLS: dict[str, dict[str, list[str]]] = {
 }
 
 
+def gateway_fault_controls() -> tuple[int, int]:
+    """Unit controls for the synthetic gateway fault wrappers: a 429 must
+    deny the first call and any call inside the retry-after window, and let
+    a caller that actually waited through; metering must pass through."""
+    import time as _time
+
+    from .gateway import RateLimitGateway, GatewayError
+
+    class FakeInner:
+        def __init__(self):
+            self.records = []
+            self.calls = 0
+
+        def chat(self, model, messages, max_tokens=1024, temperature=0.0, tools=None):
+            self.calls += 1
+            return {"choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    gw = RateLimitGateway(FakeInner(), retry_after_s=0.05)
+    total = failed = 0
+
+    def check(label, fn, expect_429):
+        nonlocal total, failed
+        total += 1
+        try:
+            fn()
+            got_429 = False
+        except GatewayError as e:
+            got_429 = "429" in str(e)
+        ok = got_429 == expect_429
+        failed += not ok
+        print(f"{'ok ' if ok else 'FAIL'}  gateway.ratelimit{'':27s} {label} -> 429={got_429}")
+
+    check("first call denied", lambda: gw.chat("m", []), True)
+    check("immediate retry denied", lambda: gw.chat("m", []), True)
+    _time.sleep(0.06)
+    check("call after window passes", lambda: gw.chat("m", []), False)
+    check("later call still passes", lambda: gw.chat("m", []), False)
+    total += 1
+    if gw.inner.calls != 2 or gw.denials != 2:
+        failed += 1
+        print(f"FAIL  gateway.ratelimit{'':27s} metering -> inner={gw.inner.calls} denials={gw.denials}")
+    else:
+        print(f"ok   gateway.ratelimit{'':27s} metering -> inner=2 denials=2")
+    return total, failed
+
+
 def main() -> int:
     by_id = {t.task_id: t for t in TASKS}
     total = failed = 0
@@ -91,6 +138,9 @@ def main() -> int:
                 mark = "ok " if ok else "FAIL"
                 shown = ans if ans else "<empty>"
                 print(f"{mark}  {task_id:38s} {kind:6s} {shown!r} -> {got}")
+    g_total, g_failed = gateway_fault_controls()
+    total += g_total
+    failed += g_failed
     print(f"\n{total - failed}/{total} controls behave")
     return 1 if failed else 0
 

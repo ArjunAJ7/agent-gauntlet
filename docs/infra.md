@@ -54,3 +54,22 @@
 - Gateway change: BENCH_WIRE_MODEL_PREFIX prefixes the model name on the wire
   for Bifrost provider routing (e.g. "cf-workers-ai/"); benchmark records keep
   the canonical @cf/... model name.
+
+## Validation (Nov 17, offline)
+- Added RateLimitGateway (429 + retry-after window; denied calls record no
+  tokens, as with a real provider), Task.ratelimit_after_s, and a
+  docs.single_hop.refund_window.ratelimit resilience variant (after_s=2.0).
+- Agent specs now carry model_retries / honor_retry_after; react-skeptic
+  retries a failed model call once immediately, new react-backoff parses the
+  retry-after window and sleeps (capped at 5s). Previously every agent loop
+  broke on the first model error.
+- Offline scripted-gateway validation: concise FAIL (1 denial, gives up),
+  skeptic FAIL (2 denials, immediate retry inside window), backoff PASS
+  (1 denial, waits, completes search->read->answer). Outage parity: all
+  three still FAIL; skeptic/backoff traces now show the retry attempts.
+- Controls extended to 41: five RateLimitGateway unit controls (first call
+  denied, in-window retry denied, post-window pass, metering pass-through).
+- Real-model run of the ratelimit variant is intentionally pending: the
+  sandbox lost the local Bifrost config overnight and re-minting credentials
+  for a 6-run smoke is deferred to the next planned browser session; the
+  daily cap state file makes that run safe to schedule.

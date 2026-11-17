@@ -26,6 +26,7 @@ class Task:
     grade: Callable[[str], bool]    # deterministic check on the final answer
     max_steps: int = 12
     outage_after: int | None = None  # if set, the model gateway "goes down" after this many calls
+    ratelimit_after_s: float | None = None  # if set, the first model call 429s; calls inside the window keep failing
 
 
 def _docs_single_hop(rep: int = 0) -> DocsStore:
@@ -143,6 +144,10 @@ def with_injection(task: Task, mode: str, **kw) -> Task:
         return Task(task.task_id + ".outage", "resilience", task.goal,
                     task.make_env, task.grade, task.max_steps,
                     outage_after=kw.get("after", 2))
+    if mode == "ratelimit":
+        return Task(task.task_id + ".ratelimit", "resilience", task.goal,
+                    task.make_env, task.grade, task.max_steps,
+                    ratelimit_after_s=kw.get("after_s", 2.0))
     if mode == "misleading":
         stale = {  # known-wrong but plausible content per task
             "docs.multi_hop.cron_tz": "The scheduler service reads its timezone from "
@@ -162,5 +167,6 @@ def get_suite(name: str) -> list[Task]:
         by_id = {t.task_id: t for t in TASKS}
         out += [with_injection(by_id["docs.multi_hop.cron_tz"], "flaky", fail_rate=0.3, seed=7),
                 with_injection(by_id["docs.multi_hop.cron_tz"], "misleading"),
-                with_injection(by_id["docs.three_hop.lag_threshold"], "outage", after=2)]
+                with_injection(by_id["docs.three_hop.lag_threshold"], "outage", after=2),
+                with_injection(by_id["docs.single_hop.refund_window"], "ratelimit", after_s=2.0)]
     return out

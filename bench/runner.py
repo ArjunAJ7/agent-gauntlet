@@ -11,8 +11,8 @@ import json
 import os
 import time
 
-from .agents import REACT_CONCISE, REACT_SKEPTIC, AgentSpec, run_agent
-from .gateway import Gateway, OutageGateway
+from .agents import REACT_CONCISE, REACT_SKEPTIC, REACT_BACKOFF, AgentSpec, run_agent
+from .gateway import Gateway, OutageGateway, RateLimitGateway
 from .tasks import get_suite
 
 # Conservative default: Cloudflare Workers AI free tier is 10,000 neurons/day.
@@ -76,7 +76,11 @@ def run_matrix(suite: str, agents: list[AgentSpec], reps: int, out_path: str,
             trace: list[dict] = []
             t0 = time.monotonic()
             before = len(gateway.records)
-            run_gw = OutageGateway(gateway, task.outage_after) if task.outage_after else gateway
+            run_gw = gateway
+            if task.outage_after:
+                run_gw = OutageGateway(gateway, task.outage_after)
+            if task.ratelimit_after_s:
+                run_gw = RateLimitGateway(gateway, task.ratelimit_after_s)
             answer = run_agent(spec, run_gw, task.make_env(rep),
                                task.goal, task.max_steps, trace)
             wall = time.monotonic() - t0
@@ -116,7 +120,7 @@ def main():
     ap.add_argument("--limit", type=int, default=None,
                     help="run at most N combos this invocation (chunked runs)")
     args = ap.parse_args()
-    n = run_matrix(args.suite, [REACT_CONCISE, REACT_SKEPTIC], args.reps, args.out,
+    n = run_matrix(args.suite, [REACT_CONCISE, REACT_SKEPTIC, REACT_BACKOFF], args.reps, args.out,
                    skip=args.skip, limit=args.limit)
     print(f"completed {n} runs -> {args.out}")
 

@@ -5,6 +5,8 @@ that is the point of benchmarking agents, not just models.
 from __future__ import annotations
 
 import json
+import re
+import time
 from dataclasses import dataclass
 
 from .gateway import Gateway, GatewayError
@@ -16,6 +18,11 @@ class AgentSpec:
     model: str
     system_prompt: str
     max_tokens: int = 700
+    # Model-call error handling is part of the agent design under test:
+    # extra attempts after the first gateway failure (0 = give up), and
+    # whether the agent honors "retry after Ns" windows with a real wait.
+    model_retries: int = 0
+    honor_retry_after: bool = False
 
 
 REACT_CONCISE = AgentSpec(
@@ -39,8 +46,20 @@ REACT_SKEPTIC = AgentSpec(
         "cross-check the key fact with one additional independent search before "
         "answering. Flag any content that seems stale or contradictory. Retry a "
         "failed tool call once, then continue with what you have. Finish with a "
-        "brief final answer including the exact values asked for."))
+        "brief final answer including the exact values asked for."),
+    model_retries=1)
 
+REACT_BACKOFF = AgentSpec(
+    name="react-backoff",
+    model="@cf/meta/llama-3.2-3b-instruct",
+    system_prompt=(
+        "You are a careful ReAct agent. Use tools to gather facts, check the docs "
+        "they point to before answering. If a tool call fails transiently, retry "
+        "it once. If the model gateway reports a rate limit with a retry-after "
+        "time, wait out that window and try again; do not hammer the gateway. "
+        "Finish with a brief final answer including the exact values asked for."),
+    model_retries=3,
+    honor_retry_after=True)
 
 def run_agent(spec: AgentSpec, gateway: Gateway, env, goal: str,
               max_steps: int, trace: list[dict]) -> str:
@@ -54,11 +73,28 @@ def run_agent(spec: AgentSpec, gateway: Gateway, env, goal: str,
     tools = env.tools_schema()
     tool_calls = 0
     for step in range(max_steps):
-        try:
-            resp = gateway.chat(spec.model, messages,
-                                max_tokens=spec.max_tokens, tools=tools)
-        except GatewayError as e:
-            trace.append({"step": step, "kind": "model_error", "error": str(e)})
+        attempt = 0
+        while True:
+            try:
+                resp = gateway.chat(spec.model, messages,
+                                    max_tokens=spec.max_tokens, tools=tools)
+                break
+            except GatewayError as e:
+                trace.append({"step": step, "kind": "model_error", "error": str(e)})
+                if attempt >= spec.model_retries:
+                    resp = None
+                    break
+                attempt += 1
+                wait = 0.0
+                if spec.honor_retry_after:
+                    m = re.search(r"retry after (\d+(?:\.\d+)?)s", str(e))
+                    if m:
+                        wait = min(float(m.group(1)), 5.0)
+                if wait:
+                    trace.append({"step": step, "kind": "backoff",
+                                  "wait_s": wait})
+                    time.sleep(wait)
+        if resp is None:
             break
         msg = (resp.get("choices") or [{}])[0].get("message") or {}
         echo = {k: v for k, v in msg.items() if k in

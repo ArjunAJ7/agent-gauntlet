@@ -34,6 +34,10 @@ class Gateway:
     def __post_init__(self):
         self.base_url = (self.base_url or os.environ.get("BIFROST_URL", "http://127.0.0.1:18777")).rstrip("/")
         self.virtual_key = self.virtual_key or os.environ.get("BIFROST_VK", "")
+        # Direct-provider smoke mode: "Name: value" added to every request
+        # (e.g. Authorization for the Cloudflare OpenAI-compatible endpoint
+        # when the local Bifrost gateway is unavailable). Never logged.
+        self.auth_header = os.environ.get("BENCH_AUTH_HEADER", "")
 
     def chat(self, model: str, messages: list[dict], max_tokens: int = 1024,
              temperature: float = 0.0, tools: list[dict] | None = None) -> dict:
@@ -54,8 +58,12 @@ class Gateway:
         req = urllib.request.Request(
             f"{self.base_url}/v1/chat/completions",
             data=json.dumps(body).encode(),
-            headers={"Content-Type": "application/json",
-                     "x-bf-vk": self.virtual_key},
+            headers=dict(
+                {"Content-Type": "application/json",
+                 "x-bf-vk": self.virtual_key},
+                **({self.auth_header.split(":", 1)[0].strip():
+                    self.auth_header.split(":", 1)[1].strip()}
+                   if ":" in self.auth_header else {})),
             method="POST")
         t0 = time.monotonic()
         try:

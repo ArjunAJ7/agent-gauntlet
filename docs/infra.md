@@ -69,7 +69,22 @@
   three still FAIL; skeptic/backoff traces now show the retry attempts.
 - Controls extended to 41: five RateLimitGateway unit controls (first call
   denied, in-window retry denied, post-window pass, metering pass-through).
-- Real-model run of the ratelimit variant is intentionally pending: the
-  sandbox lost the local Bifrost config overnight and re-minting credentials
-  for a 6-run smoke is deferred to the next planned browser session; the
-  daily cap state file makes that run safe to schedule.
+
+## Validation (Nov 17, real-model smoke, 6 runs)
+- Local Bifrost config was wiped overnight; instead of rebuilding it, the
+  gateway gained BENCH_AUTH_HEADER (direct-provider mode) and the smoke ran
+  against the Cloudflare OpenAI-compatible endpoint directly (usage +
+  neurons fields confirmed present; rolled bench token, same scope).
+- Ratelimit variant, 1 rep x 3 agents (evidence/smoke-ratelimit-outage-20261117.jsonl):
+  concise FAIL (first 429, gives up), skeptic FAIL (immediate retry inside
+  the 2s window, second 429), backoff PASS (429 -> waited out the window ->
+  docs_search -> docs_read -> correct answer "30 days", 868 tokens, 3.5s
+  wall). Matches the offline scripted-gateway predictions exactly.
+- Outage variant, 1 rep x 3 agents: concise and skeptic hit the injected
+  outage and failed mid-investigation (1-2 model errors) as designed.
+  Backoff's run ended at step 1 via the known excerpt-answering failure
+  mode (answered from the search snippet without docs_read, wrong value),
+  so its outage behavior was not exercised in this smoke; offline scripted
+  validation covers outage parity for all three designs.
+- Smoke spend: ~3.7k tokens (~120 neurons conservative) against the 10k/day
+  free allocation; cap state file recorded the spend as usual.
